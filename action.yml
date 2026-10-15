@@ -1,0 +1,127 @@
+# Install miso from a release, and build (and test) the miso project of a
+# repository:
+#
+#   - uses: actions/checkout@v5
+#   - uses: haskell-miso/setup-miso@v1
+#     with:
+#       test: miso run tests
+#
+# Linux and macOS.  emscripten is set up when miso.yml has a browser target.
+name: Setup miso
+description: Install the miso tool (MicroHs, MicroCabal, miso) from a release, and build and test a miso project
+author: haskell-miso
+branding:
+  icon: battery-charging
+  color: green
+
+inputs:
+  version:
+    description: The release to install (a tag such as v0.1.0), or latest
+    default: latest
+  working-directory:
+    description: The directory of miso.yml
+    default: .
+  build:
+    description: Run miso build
+    default: 'true'
+  lint:
+    description: Run miso lint (hlint) before the build
+    default: 'false'
+  test:
+    description: A shell command run after the build, in working-directory (for example, miso run tests)
+    default: ''
+  emscripten:
+    description: The emscripten version to set up (for target browser or browser_js), auto (when miso.yml has a browser target), or none
+    default: auto
+  cache:
+    description: Cache the installed packages and the browser runtimes, keyed on miso.yml and miso.lock
+    default: 'true'
+
+outputs:
+  version:
+    description: The installed miso version
+    value: ${{ steps.install.outputs.version }}
+  miso-home:
+    description: Where miso is installed ($MISO_HOME)
+    value: ${{ steps.install.outputs.home }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install miso
+      id: install
+      shell: bash
+      env:
+        MISO_VERSION: ${{ inputs.version }}
+      run: |
+        if [ "$RUNNER_OS" = Windows ]; then
+          echo "::error::the miso action runs on Linux and macOS; on Windows, use msys2/setup-msys2 and install.sh"
+          exit 1
+        fi
+        export MISO_HOME=${MISO_HOME:-$HOME/.miso}
+        # install.sh of the release (of main, for latest)
+        ref=main; [ "$MISO_VERSION" = latest ] || ref=$MISO_VERSION
+        curl -fsSL --retry 3 "https://raw.githubusercontent.com/haskell-miso/cli/$ref/install.sh" | sh
+        echo "MISO_HOME=$MISO_HOME" >> "$GITHUB_ENV"
+        echo "$MISO_HOME/bin" >> "$GITHUB_PATH"
+        echo "home=$MISO_HOME" >> "$GITHUB_OUTPUT"
+        echo "version=$("$MISO_HOME/bin/miso" version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+    # After the install, which replaces the package database with the release's.
+    - name: Cache packages
+      if: inputs.cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ steps.install.outputs.home }}/mcabal
+          ${{ steps.install.outputs.home }}/mhs-*
+          ${{ steps.install.outputs.home }}/rts
+        key: miso-${{ runner.os }}-${{ runner.arch }}-${{ steps.install.outputs.version }}-${{ hashFiles(format('{0}/miso.yml', inputs.working-directory), format('{0}/miso.lock', inputs.working-directory)) }}
+        restore-keys: |
+          miso-${{ runner.os }}-${{ runner.arch }}-${{ steps.install.outputs.version }}-
+
+    - name: Look for a browser target
+      id: emscripten
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        EMSCRIPTEN: ${{ inputs.emscripten }}
+      run: |
+        case "$EMSCRIPTEN" in
+          none) v= ;;
+          auto)
+            if [ -f miso.yml ] && grep -Eq '^[[:space:]]*target:[[:space:]]*browser(_js)?[[:space:]]*(#.*)?$' miso.yml
+            then v=latest; else v=; fi ;;
+          *) v=$EMSCRIPTEN ;;
+        esac
+        echo "version=$v" >> "$GITHUB_OUTPUT"
+
+    - name: Set up emscripten
+      if: steps.emscripten.outputs.version != ''
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: ${{ steps.emscripten.outputs.version }}
+
+    - name: miso doctor
+      if: hashFiles(format('{0}/miso.yml', inputs.working-directory)) != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: miso doctor
+
+    - name: miso lint
+      if: inputs.lint == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: miso lint
+
+    - name: miso build
+      if: inputs.build == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: miso build
+
+    - name: Test
+      if: inputs.test != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: ${{ inputs.test }}

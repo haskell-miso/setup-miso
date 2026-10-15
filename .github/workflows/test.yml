@@ -1,0 +1,70 @@
+# Test the action with a miso release: a native project, and a browser one
+# (with emscripten).  Weekly, to catch a new release of haskell-miso/cli.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The release to test (a tag, or latest)
+        default: latest
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      # install only, to make the project
+      - uses: ./
+        with:
+          version: ${{ inputs.version || 'latest' }}
+          build: 'false'
+          cache: 'false'
+      - name: A native project
+        run: |
+          miso new hello
+          cd hello
+          sed -e 's/^target: browser/target: native/' miso.yml > miso.yml.new && mv miso.yml.new miso.yml
+          cat > app/Main.hs <<'HS'
+          module Main where
+          main :: IO ()
+          main = putStrLn "hello"
+          HS
+      - uses: ./
+        id: miso
+        with:
+          version: ${{ inputs.version || 'latest' }}
+          working-directory: hello
+          test: '[ "$(miso run | tail -1)" = hello ]'
+      - name: Outputs
+        run: |
+          echo "miso ${{ steps.miso.outputs.version }} in ${{ steps.miso.outputs.miso-home }}"
+          [ -n "${{ steps.miso.outputs.version }}" ]
+          [ "$(command -v miso)" = "${{ steps.miso.outputs.miso-home }}/bin/miso" ]
+          [ -z "$(command -v emcc || true)" ]
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # install only, to make the project
+      - uses: ./
+        with:
+          version: ${{ inputs.version || 'latest' }}
+          build: 'false'
+          cache: 'false'
+      - run: miso new counter
+      - uses: ./
+        with:
+          version: ${{ inputs.version || 'latest' }}
+          working-directory: counter
+          test: test -s public/index.js
