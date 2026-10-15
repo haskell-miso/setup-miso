@@ -24,7 +24,7 @@ jobs:
 | `lint` | `false` | run `miso lint` before the build |
 | `test` | | a shell command run after the build |
 | `emscripten` | `auto` | set up emscripten: `auto` (when `miso.yml` has a `browser` or `browser_js` target), `none`, or a version |
-| `cache` | `true` | cache the installed packages and browser runtimes, keyed on `miso.yml` and `miso.lock` |
+| `cache` | `true` | cache the installed packages and browser runtimes (keyed on `miso.yml` and `miso.lock`), and emscripten (in `.emsdk-cache` in the workspace, keyed on its version) |
 
 It puts `miso` on the `PATH` for the later steps, and sets `MISO_HOME`; its
 outputs are `version` and `miso-home`.  It runs on Linux and macOS (on

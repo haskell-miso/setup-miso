@@ -34,7 +34,7 @@ inputs:
     description: The emscripten version to set up (for target browser or browser_js), auto (when miso.yml has a browser target), or none
     default: auto
   cache:
-    description: Cache the installed packages and the browser runtimes, keyed on miso.yml and miso.lock
+    description: Cache the installed packages and the browser runtimes (keyed on miso.yml and miso.lock), and emscripten (in .emsdk-cache in the workspace)
     default: 'true'
 
 outputs:
@@ -94,13 +94,22 @@ runs:
             then v=latest; else v=; fi ;;
           *) v=$EMSCRIPTEN ;;
         esac
+        # the version latest is now, so that the cache of it is not kept forever
+        if [ "$v" = latest ]; then
+          v=$(curl -fsSL --retry 3 https://raw.githubusercontent.com/emscripten-core/emsdk/main/emscripten-releases-tags.json \
+              | sed -n 's/^ *"latest": *"\([^"]*\)".*/\1/p' | head -1)
+          [ -n "$v" ] || { echo "::error::could not find the latest emscripten version"; exit 1; }
+        fi
         echo "version=$v" >> "$GITHUB_OUTPUT"
 
     - name: Set up emscripten
       if: steps.emscripten.outputs.version != ''
-      uses: mymindstorm/setup-emsdk@v14
+      uses: mymindstorm/setup-emsdk@v16
       with:
         version: ${{ steps.emscripten.outputs.version }}
+        # emsdk, cached in the workspace (setup-emsdk caches under it only)
+        actions-cache-folder: ${{ inputs.cache == 'true' && '.emsdk-cache' || '' }}
+        cache-key: emsdk-${{ steps.emscripten.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
 
     - name: miso doctor
       if: hashFiles(format('{0}/miso.yml', inputs.working-directory)) != ''
