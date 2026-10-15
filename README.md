@@ -1,4 +1,4 @@
-# setup-miso
+# ⚙️ 🍜 setup-miso
 
 A GitHub Action that installs [miso](https://github.com/haskell-miso/cli) (the
 command line tool for [miso](https://haskell-miso.org) apps: MicroHs,
