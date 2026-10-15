@@ -29,28 +29,63 @@ jobs:
           version: ${{ inputs.version || 'latest' }}
           build: 'false'
           cache: 'false'
-      - name: A native project
+      - name: A native project, with a test
         run: |
           miso new hello
           cd hello
           sed -e 's/^target: browser/target: native/' miso.yml > miso.yml.new && mv miso.yml.new miso.yml
+          cat >> miso.yml <<'YML'
+          tests:
+            pass:
+              main: Pass
+          YML
           cat > app/Main.hs <<'HS'
           module Main where
           main :: IO ()
           main = putStrLn "hello"
           HS
+          mkdir -p test
+          cat > test/Pass.hs <<'HS'
+          module Pass(main) where
+          main :: IO ()
+          main = putStrLn "pass"
+          HS
+      # test: auto runs miso test, as miso.yml has tests
       - uses: ./
         id: miso
         with:
           version: ${{ inputs.version || 'latest' }}
           working-directory: hello
-          test: '[ "$(miso run | tail -1)" = hello ]'
-      - name: Outputs
+      - name: Outputs, and miso run
+        working-directory: hello
         run: |
           echo "miso ${{ steps.miso.outputs.version }} in ${{ steps.miso.outputs.miso-home }}"
           [ -n "${{ steps.miso.outputs.version }}" ]
           [ "$(command -v miso)" = "${{ steps.miso.outputs.miso-home }}/bin/miso" ]
           [ -z "$(command -v emcc || true)" ]
+          [ -x dist/pass ]
+          [ "$(miso run | tail -1 | tr -d '\r')" = hello ]
+      - name: A failing test
+        working-directory: hello
+        run: |
+          cat >> miso.yml <<'YML'
+            fail:
+              main: Fail
+          YML
+          cat > test/Fail.hs <<'HS'
+          module Fail(main) where
+          import System.Exit
+          main :: IO ()
+          main = exitWith (ExitFailure 3)
+          HS
+      - uses: ./
+        id: failing
+        continue-on-error: true
+        with:
+          version: ${{ inputs.version || 'latest' }}
+          working-directory: hello
+      - name: The action fails with the failing test
+        run: '[ "${{ steps.failing.outcome }}" = failure ]'
 
   browser:
     runs-on: ubuntu-latest

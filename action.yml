@@ -4,7 +4,8 @@
 #   - uses: actions/checkout@v5
 #   - uses: haskell-miso/setup-miso@v1
 #     with:
-#       test: miso run tests
+#
+# It runs miso test when miso.yml has tests.
 #
 # Linux and macOS.  emscripten is set up when miso.yml has a browser target.
 name: Setup miso
@@ -28,8 +29,8 @@ inputs:
     description: Run miso lint (hlint) before the build
     default: 'false'
   test:
-    description: A shell command run after the build, in working-directory (for example, miso run tests)
-    default: ''
+    description: auto (miso test, when miso.yml has a tests section), true (miso test), false, or a shell command run after the build (for example, miso test spec -- --fast)
+    default: auto
   emscripten:
     description: The emscripten version to set up (for target browser or browser_js), auto (when miso.yml has a browser target), or none
     default: auto
@@ -129,8 +130,17 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: miso build
 
-    - name: Test
-      if: inputs.test != ''
+    - name: miso test
+      if: inputs.test != 'false' && inputs.test != ''
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: ${{ inputs.test }}
+      env:
+        TEST: ${{ inputs.test }}
+      run: |
+        case "$TEST" in
+          auto)
+            if [ -f miso.yml ] && grep -q '^tests:' miso.yml; then miso test
+            else echo "miso.yml has no tests: section; no tests to run"; fi ;;
+          true) miso test ;;
+          *) eval "$TEST" ;;
+        esac

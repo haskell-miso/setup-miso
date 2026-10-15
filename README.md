@@ -11,9 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: haskell-miso/setup-miso@v1
-        with:
-          test: miso run tests     # a shell command, after miso build
+      - uses: haskell-miso/setup-miso@v1    # miso build, then miso test
 ```
 
 | input | default | |
@@ -22,7 +20,7 @@ jobs:
 | `working-directory` | `.` | the directory of `miso.yml` |
 | `build` | `true` | run `miso build` (`false`: only install miso) |
 | `lint` | `false` | run `miso lint` before the build |
-| `test` | | a shell command run after the build |
+| `test` | `auto` | after the build: `auto` runs `miso test` when `miso.yml` has a `tests:` section, `true` always runs it, `false` runs nothing, and anything else is a shell command (such as `miso test spec -- --fast`) |
 | `emscripten` | `auto` | set up emscripten: `auto` (when `miso.yml` has a `browser` or `browser_js` target), `none`, or a version |
 | `cache` | `true` | cache the installed packages and browser runtimes (keyed on `miso.yml` and `miso.lock`), and emscripten (in `.emsdk-cache` in the workspace, keyed on its version) |
 
